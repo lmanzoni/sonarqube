@@ -20,6 +20,7 @@
 package org.sonar.server.qualitygate;
 
 import javax.annotation.Nullable;
+
 import org.sonar.core.util.UuidFactory;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;

@@ -186,6 +186,26 @@ public class CopyActionTest {
   }
 
   @Test
+  public void fail_when_missing_administer_quality_gate_permission() {
+    OrganizationDto organization = db.organizations().insert();
+    userSession.addPermission(ADMINISTER_QUALITY_PROFILES, organization);
+
+    QGateWithOrgDto qualityGate = db.qualityGates().insertQualityGate(organization);
+
+    expectedException.expect(ForbiddenException.class);
+
+    QualityGate response = ws.newRequest()
+      .setParam(PARAM_ID, qualityGate.getId().toString())
+      .setParam(PARAM_NAME, "new-name")
+      .setParam(PARAM_ORGANIZATION, organization.getKey())
+      .executeProtobuf(QualityGate.class);
+
+    assertThat(response).isNotNull();
+    assertThat(response.getId()).isNotEqualTo(qualityGate.getId());
+    assertThat(response.getName()).isEqualTo("new-name");
+  }
+
+  @Test
   public void quality_gate_from_external_organization_can_not_be_copied(){
     OrganizationDto organization1 = db.organizations().insert();
     QualityGateDto qualityGate1 = db.qualityGates().insertQualityGate(organization1);
@@ -200,22 +220,6 @@ public class CopyActionTest {
       .setParam(PARAM_ORGANIZATION, organization2.getKey())
       .setParam(PARAM_ID, qualityGate1.getId().toString())
       .setParam(PARAM_NAME, "new-name")
-      .execute();
-  }
-
-  @Test
-  public void fail_when_missing_administer_quality_gate_permission() {
-    OrganizationDto organization = db.organizations().insert();
-    userSession.addPermission(ADMINISTER_QUALITY_PROFILES, organization);
-
-    QGateWithOrgDto qualityGate = db.qualityGates().insertQualityGate(organization);
-
-    expectedException.expect(ForbiddenException.class);
-
-    ws.newRequest()
-      .setParam(PARAM_ID, qualityGate.getId().toString())
-      .setParam(PARAM_NAME, "new-name")
-      .setParam(PARAM_ORGANIZATION, organization.getKey())
       .execute();
   }
 
