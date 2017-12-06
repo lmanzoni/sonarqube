@@ -40,6 +40,7 @@ import org.sonar.db.organization.OrganizationDto;
 import org.sonar.db.property.PropertyDto;
 import org.sonar.db.qualitygate.ProjectQgateAssociation;
 import org.sonar.db.qualitygate.ProjectQgateAssociationQuery;
+import org.sonar.db.qualitygate.QGateWithOrgDto;
 import org.sonar.db.qualitygate.QualityGateDto;
 import org.sonar.db.user.UserDto;
 import org.sonar.server.exceptions.NotFoundException;
@@ -69,17 +70,18 @@ public class QgateProjectFinderTest {
   private ComponentDbTester componentDbTester = new ComponentDbTester(dbTester);
   private QualityGateDto qGate;
   private QgateProjectFinder underTest = new QgateProjectFinder(dbClient, userSession);
+  private OrganizationDto organization;
 
   @Before
   public void setUp() throws Exception {
-    qGate = new QualityGateDto().setName("Default Quality Gate").setUuid(Uuids.createFast());
-    dbClient.qualityGateDao().insert(dbSession, qGate);
+    organization = dbTester.organizations().insert();
+    qGate = dbTester.qualityGates().insertQualityGate(organization, qualityGateDto -> qualityGateDto.setName("Default Quality Gate").setUuid(Uuids.createFast()));
     dbTester.commit();
   }
 
   @Test
   public void return_empty_association() {
-    Association result = underTest.find(
+    Association result = underTest.find(dbSession, organization,
       builder()
         .gateId(Long.toString(qGate.getId()))
         .build());
@@ -89,12 +91,11 @@ public class QgateProjectFinderTest {
 
   @Test
   public void return_all_projects() {
-    OrganizationDto org = dbTester.organizations().insert();
-    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(org));
-    ComponentDto unassociatedProject = insertProject(ComponentTesting.newPublicProjectDto(org));
+    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(organization));
+    ComponentDto unassociatedProject = insertProject(ComponentTesting.newPublicProjectDto(organization));
     associateProjectToQualitGate(associatedProject.getId());
 
-    Association result = underTest.find(
+    Association result = underTest.find(dbSession, organization,
       builder()
         .gateId(Long.toString(qGate.getId()))
         .build());
@@ -108,12 +109,11 @@ public class QgateProjectFinderTest {
 
   @Test
   public void return_only_associated_project() {
-    OrganizationDto org = dbTester.organizations().insert();
-    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(org));
-    insertProject(ComponentTesting.newPublicProjectDto(org));
+    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(organization));
+    insertProject(ComponentTesting.newPublicProjectDto(organization));
     associateProjectToQualitGate(associatedProject.getId());
 
-    Association result = underTest.find(
+    Association result = underTest.find(dbSession, organization,
       builder()
         .membership(IN)
         .gateId(Long.toString(qGate.getId()))
@@ -126,12 +126,11 @@ public class QgateProjectFinderTest {
 
   @Test
   public void return_only_unassociated_project() {
-    OrganizationDto org = dbTester.organizations().insert();
-    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(org));
-    ComponentDto unassociatedProject = insertProject(ComponentTesting.newPublicProjectDto(org));
+    ComponentDto associatedProject = insertProject(ComponentTesting.newPublicProjectDto(organization));
+    ComponentDto unassociatedProject = insertProject(ComponentTesting.newPublicProjectDto(organization));
     associateProjectToQualitGate(associatedProject.getId());
 
-    Association result = underTest.find(
+    Association result = underTest.find(dbSession, organization,
       builder()
         .membership(OUT)
         .gateId(Long.toString(qGate.getId()))
@@ -145,15 +144,14 @@ public class QgateProjectFinderTest {
   @Test
   public void return_only_authorized_projects() {
     UserDto user = dbTester.users().insertUser("a_login");
-    OrganizationDto organizationDto = dbTester.organizations().insert();
-    ComponentDto project1 = componentDbTester.insertComponent(ComponentTesting.newPrivateProjectDto(organizationDto));
-    componentDbTester.insertComponent(ComponentTesting.newPrivateProjectDto(organizationDto));
+    ComponentDto project1 = componentDbTester.insertComponent(ComponentTesting.newPrivateProjectDto(organization));
+    componentDbTester.insertComponent(ComponentTesting.newPrivateProjectDto(organization));
 
     // User can only see project 1
     dbTester.users().insertProjectPermissionOnUser(user, UserRole.USER, project1);
 
     userSession.logIn(user.getLogin()).setUserId(user.getId());
-    Association result = underTest.find(
+    Association result = underTest.find(dbSession, organization,
       builder()
         .gateId(Long.toString(qGate.getId()))
         .build());
@@ -163,29 +161,27 @@ public class QgateProjectFinderTest {
 
   @Test
   public void do_not_verify_permissions_if_user_is_root() {
-    OrganizationDto org = dbTester.organizations().insert();
-    ComponentDto project = componentDbTester.insertPrivateProject(org);
+    ComponentDto project = componentDbTester.insertPrivateProject(organization);
     ProjectQgateAssociationQuery query = builder()
       .gateId(Long.toString(qGate.getId()))
       .build();
 
     userSession.logIn().setNonRoot();
-    verifyProjects(underTest.find(query));
+    verifyProjects(underTest.find(dbSession, organization, query));
 
     userSession.logIn().setRoot();
-    verifyProjects(underTest.find(query), project.getId());
+    verifyProjects(underTest.find(dbSession, organization, query), project.getId());
   }
 
   @Test
   public void test_paging() throws Exception {
-    OrganizationDto org = dbTester.organizations().insert();
-    ComponentDto project1 = insertProject(ComponentTesting.newPublicProjectDto(org).setName("Project 1"));
-    ComponentDto project2 = insertProject(ComponentTesting.newPublicProjectDto(org).setName("Project 2"));
-    ComponentDto project3 = insertProject(ComponentTesting.newPublicProjectDto(org).setName("Project 3"));
+    ComponentDto project1 = insertProject(ComponentTesting.newPublicProjectDto(organization).setName("Project 1"));
+    ComponentDto project2 = insertProject(ComponentTesting.newPublicProjectDto(organization).setName("Project 2"));
+    ComponentDto project3 = insertProject(ComponentTesting.newPublicProjectDto(organization).setName("Project 3"));
     associateProjectToQualitGate(project1.getId());
 
     // Return partial result on first page
-    verifyPaging(underTest.find(
+    verifyPaging(underTest.find(dbSession, organization,
       builder().gateId(Long.toString(qGate.getId()))
         .pageIndex(1)
         .pageSize(1)
@@ -193,7 +189,7 @@ public class QgateProjectFinderTest {
       true, project1.getId());
 
     // Return partial result on second page
-    verifyPaging(underTest.find(
+    verifyPaging(underTest.find(dbSession, organization,
       builder().gateId(Long.toString(qGate.getId()))
         .pageIndex(2)
         .pageSize(1)
@@ -201,7 +197,7 @@ public class QgateProjectFinderTest {
       true, project2.getId());
 
     // Return partial result on first page
-    verifyPaging(underTest.find(
+    verifyPaging(underTest.find(dbSession, organization,
       builder().gateId(Long.toString(qGate.getId()))
         .pageIndex(1)
         .pageSize(2)
@@ -209,7 +205,7 @@ public class QgateProjectFinderTest {
       true, project1.getId(), project2.getId());
 
     // Return all result on first page
-    verifyPaging(underTest.find(
+    verifyPaging(underTest.find(dbSession, organization,
       builder().gateId(Long.toString(qGate.getId()))
         .pageIndex(1)
         .pageSize(3)
@@ -217,7 +213,7 @@ public class QgateProjectFinderTest {
       false, project1.getId(), project2.getId(), project3.getId());
 
     // Return no result as page index is off limit
-    verifyPaging(underTest.find(
+    verifyPaging(underTest.find(dbSession, organization,
       builder().gateId(Long.toString(qGate.getId()))
         .pageIndex(3)
         .pageSize(3)
@@ -228,7 +224,7 @@ public class QgateProjectFinderTest {
   @Test
   public void fail_on_unknown_quality_gate() {
     expectedException.expect(NotFoundException.class);
-    underTest.find(builder().gateId("123").build());
+    underTest.find(dbSession, organization, builder().gateId("123").build());
   }
 
   private void verifyProject(ProjectQgateAssociation project, boolean expectedMembership, String expectedName) {
