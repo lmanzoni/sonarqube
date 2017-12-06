@@ -60,21 +60,26 @@ public class LiveMeasuresTest {
 
     orchestrator.executeBuildQuietly(SonarScanner.create(ItUtils.projectDir(PROJECT_DIR)));
 
-    assertThat(numberOfBugs()).as("Number of bugs before change").isEqualTo(1);
+    assertMeasure("bugs", 1);
 
     String issueKey = tester.wsClient().issues().search(new SearchRequest()).getIssuesList().get(0).getKey();
     tester.wsClient().issues().doTransition(
       new DoTransitionRequest().setIssue(issueKey).setTransition("falsepositive")
     );
 
-    assertThat(numberOfBugs()).as("Number of bugs after change").isEqualTo(0);
+    assertMeasure("bugs", 0);
+
+    orchestrator.executeBuildQuietly(SonarScanner.create(ItUtils.projectDir(PROJECT_DIR)));
+
+    assertMeasure("bugs", 0);
   }
 
-  private int numberOfBugs() {
-    return parseInt(tester.wsClient().measures().component(
+  private void assertMeasure(String metricKey, int expectedValue) {
+    int actual = parseInt(tester.wsClient().measures().component(
       new ComponentRequest()
-        .setMetricKeys(Collections.singletonList("bugs"))
+        .setMetricKeys(Collections.singletonList(metricKey))
         .setComponent(PROJECT_KEY)
     ).getComponent().getMeasuresList().get(0).getValue());
+    assertThat(actual).as("Value of measure " + metricKey).isEqualTo(expectedValue);
   }
 }
